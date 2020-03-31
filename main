@@ -1,0 +1,147 @@
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import *
+import joblib
+import os
+from matplotlib import pyplot
+
+def read_file(file_path):
+    file = open(file_path, "r")
+    content = file.readlines()
+    return content
+
+def content_to_numpy(content_list):
+    float_matrix = []
+    for row in content_list:
+        row = row.replace('?', '0.0')
+        row = row.replace('\n', "")
+        float_list = row.split(",", 100)
+        numbers = []
+        for number in float_list:
+            number = float(number)
+            numbers.append(number)
+        float_matrix.append(numbers)
+    matrix = np.array(float_matrix)
+    return matrix
+
+def parse_numpy(file_name):
+    content = read_file(file_name)
+    arr = content_to_numpy(content)
+    return arr
+
+def eval_result(y_true, y_pred):
+    CM = confusion_matrix(y_true, y_pred)
+    TN = CM[0][0]
+    FN = CM[1][0]
+    TP = CM[1][1]
+    FP = CM[0][1]
+
+    Acc = (y_true == y_pred).sum() / y_true.shape[0]
+    Sensitivity = TP / (TP + FN)
+    Specificity = TN / (TN + FP)
+    Precision = TP / (TP + FP)
+    Recall = TP / (TP + FN)
+    F1 = 2 * Precision * Recall / (Precision + Recall)
+    Auc = roc_auc_score(y_true, y_pred)
+
+    return Acc, Sensitivity, Specificity, Precision, Recall, F1, Auc
+
+if __name__ == '__main__':
+    # read and merge 3 files to one
+    arr1 = parse_numpy("Files/processed.cleveland.data")
+    arr2 = parse_numpy("Files/processed.hungarian.data")
+    arr3 = parse_numpy("Files/processed.switzerland.data")
+    arr = np.concatenate((arr1, arr2, arr3), axis=0)
+
+    # convert target field to 0 if it is 0, to 1 if it is others
+    arr[:, 13][arr[:, 13] > 0] = 1
+
+    # shuffle data before training
+    np.random.shuffle(arr)
+
+    # split X,Y
+    X = arr[:, :13]
+    Y = arr[:, 13]
+
+    # check if pretrained models exist
+    model_folder = "Models/"
+    exist = os.path.exists(model_folder)
+
+    # split training testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.1, random_state=0)
+    if not exist:
+        # Naive Bayes classifier
+        gnb = GaussianNB()
+        gnb.fit(X_train, y_train)
+        # Linear SVM
+        linear_svm = SVC(kernel="linear", gamma=0.001)
+        linear_svm.fit(X_train, y_train)
+
+        # Poly SVM
+        poly_svm = SVC(kernel="poly", gamma=0.001)
+        poly_svm.fit(X_train, y_train)
+
+        # rbf SVM
+        rpf_svm = SVC(kernel="rbf", gamma=0.001)
+        rpf_svm.fit(X_train, y_train)
+
+        # Decision tree
+        d_tree = DecisionTreeClassifier(criterion="entropy")
+        d_tree.fit(X_train, y_train)
+
+        # save all models
+        joblib.dump(gnb, model_folder + "gnb.joblib")
+        joblib.dump(linear_svm, model_folder + "linear_svm.joblib")
+        joblib.dump(poly_svm, model_folder + "poly_svm.joblib")
+        joblib.dump(rpf_svm, model_folder + "rpf_svm.joblib")
+        joblib.dump(d_tree, model_folder + "d_tree.joblib")
+    else:
+        # Naive Bayes classifier
+        gnb = joblib.load(model_folder + "gnb.joblib")
+        linear_svm = joblib.load(model_folder + "linear_svm.joblib")
+        poly_svm = joblib.load(model_folder + "poly_svm.joblib")
+        rpf_svm = joblib.load(model_folder + "rpf_svm.joblib")
+        d_tree = joblib.load(model_folder + "d_tree.joblib")
+
+    y_pred = gnb.predict(X_test)
+    print("Number of mislabeled points out of a total %d points : %d" % (X_test.shape[0], (y_test != y_pred).sum()))
+    metric1 = eval_result(y_test, y_pred)
+
+    y_pred = linear_svm.predict(X_test)
+    print("Number of mislabeled points out of a total %d points : %d" % (X_test.shape[0], (y_test != y_pred).sum()))
+    metric2 = eval_result(y_test, y_pred)
+
+    y_pred = poly_svm.predict(X_test)
+    print("Number of mislabeled points out of a total %d points : %d" % (X_test.shape[0], (y_test != y_pred).sum()))
+    metric3 = eval_result(y_test, y_pred)
+
+    y_pred = rpf_svm.predict(X_test)
+    print("Number of mislabeled points out of a total %d points : %d" % (X_test.shape[0], (y_test != y_pred).sum()))
+    metric4 = eval_result(y_test, y_pred)
+
+    y_pred = d_tree.predict(X_test)
+    print("Number of mislabeled points out of a total %d points : %d" % (X_test.shape[0], (y_test != y_pred).sum()))
+    metric5 = eval_result(y_test, y_pred)
+
+    # plot metrics
+    image_folder = "Images/"
+    title = ["Acc", "Sensitivity", "Specificity", "Precision", "Recall", "F1", "Auc"]
+    names = ["NaiveBayes", "LinearSVM", "PolySVM", "RbfSVM", "DecisionTree"]
+    for i in range(len(metric1)):
+        values = [metric1[i], metric2[i], metric3[i], metric4[i], metric5[i]]
+        pyplot.bar(names, values)
+        pyplot.title(title[i])
+        pyplot.savefig(image_folder + title[i] + ".png")
+        pyplot.clf()
+
+    from sklearn.linear_model import LinearRegression
+
+    regressor = LinearRegression().fit(X_train, y_train)
+    # Checking the accuracy
+    from sklearn.metrics import r2_score
+
+    print(r2_score(regressor.predict(X), Y))
